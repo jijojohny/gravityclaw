@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { usePrivy } from "@privy-io/react-auth";
 import { Button } from "@/components/ui/button";
 import { 
@@ -78,7 +80,18 @@ const pricingPlans = [
 ];
 
 export default function HomePage() {
-  const { login, authenticated } = usePrivy();
+  const router = useRouter();
+  const { login, authenticated, ready } = usePrivy();
+
+  useEffect(() => {
+    if (ready && authenticated) {
+      router.push("/deploy");
+    }
+  }, [ready, authenticated, router]);
+
+  const handleLogin = () => {
+    login();
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -97,10 +110,10 @@ export default function HomePage() {
                 </Link>
               ) : (
                 <>
-                  <Button variant="ghost" onClick={login}>
+                  <Button variant="ghost" onClick={handleLogin}>
                     Sign In
                   </Button>
-                  <Button onClick={login}>
+                  <Button onClick={handleLogin}>
                     Deploy Now
                     <Rocket className="ml-2 h-4 w-4" />
                   </Button>
@@ -130,7 +143,7 @@ export default function HomePage() {
           </p>
           
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-16">
-            <Button size="lg" className="text-lg px-8 py-6 glow" onClick={login}>
+            <Button size="lg" className="text-lg px-8 py-6 glow" onClick={handleLogin}>
               Deploy Your Bot Now
               <ArrowRight className="ml-2 h-5 w-5" />
             </Button>
@@ -260,7 +273,7 @@ export default function HomePage() {
                 <Button 
                   className="w-full" 
                   variant={plan.popular ? "default" : "outline"}
-                  onClick={login}
+                  onClick={handleLogin}
                 >
                   {plan.cta}
                 </Button>
@@ -285,7 +298,7 @@ export default function HomePage() {
               size="lg" 
               variant="secondary" 
               className="text-lg px-8 py-6"
-              onClick={login}
+              onClick={handleLogin}
             >
               Deploy Now - It&apos;s Free to Start
               <ArrowRight className="ml-2 h-5 w-5" />

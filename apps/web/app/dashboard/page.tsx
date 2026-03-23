@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePrivy } from "@privy-io/react-auth";
 import Link from "next/link";
@@ -17,35 +18,68 @@ import {
   MoreVertical,
   ExternalLink,
   LogOut,
+  Loader2,
+  Home,
 } from "lucide-react";
 
-const mockInstances = [
-  {
-    id: "1",
-    name: "My Assistant",
-    telegramUsername: "@MyAssistantBot",
-    model: "GPT-4o",
-    personality: "Professional",
-    status: "active",
-    messagesThisMonth: 2847,
-    maxMessages: 10000,
-    lastActive: "2 minutes ago",
-  },
-];
+interface Instance {
+  id: string;
+  name: string;
+  telegramUsername: string;
+  model: string;
+  personality: string;
+  status: string;
+  messagesThisMonth: number;
+  maxMessages: number;
+  lastActive: string;
+}
 
-const mockStats = {
-  totalMessages: 2847,
-  activeInstances: 1,
+interface Stats {
+  totalMessages: number;
+  activeInstances: number;
+  uptime: string;
+  avgResponseTime: string;
+}
+
+const defaultStats: Stats = {
+  totalMessages: 0,
+  activeInstances: 0,
   uptime: "99.9%",
   avgResponseTime: "1.2s",
 };
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { authenticated, logout, user } = usePrivy();
+  const { authenticated, logout, user, ready } = usePrivy();
+  const [instances, setInstances] = useState<Instance[]>([]);
+  const [stats, setStats] = useState<Stats>(defaultStats);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (ready && !authenticated) {
+      router.push("/");
+      return;
+    }
+
+    if (authenticated) {
+      // Simulate loading instances - would connect to API
+      setTimeout(() => {
+        setInstances([]);
+        setStats(defaultStats);
+        setLoading(false);
+      }, 500);
+    }
+  }, [ready, authenticated, router]);
+
+  if (!ready || loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   if (!authenticated) {
-    router.push("/");
     return null;
   }
 
@@ -54,15 +88,15 @@ export default function DashboardPage() {
       {/* Header */}
       <header className="border-b border-border sticky top-0 bg-background/80 backdrop-blur-sm z-50">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <Bot className="h-6 w-6 text-primary" />
             <span className="font-bold">GravityClaw</span>
-          </div>
+          </Link>
           <div className="flex items-center gap-4">
             <span className="text-sm text-muted-foreground">
-              {user?.email?.address || "User"}
+              {user?.email?.address || user?.wallet?.address?.slice(0, 8) + "..." || "User"}
             </span>
-            <Button variant="ghost" size="icon" onClick={logout}>
+            <Button variant="ghost" size="icon" onClick={logout} title="Sign out">
               <LogOut className="h-4 w-4" />
             </Button>
           </div>
@@ -95,7 +129,7 @@ export default function DashboardPage() {
                   <MessageSquare className="h-5 w-5 text-primary" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{mockStats.totalMessages.toLocaleString()}</p>
+                  <p className="text-2xl font-bold">{stats.totalMessages.toLocaleString()}</p>
                   <p className="text-sm text-muted-foreground">Messages</p>
                 </div>
               </div>
@@ -108,7 +142,7 @@ export default function DashboardPage() {
                   <Bot className="h-5 w-5 text-green-500" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{mockStats.activeInstances}</p>
+                  <p className="text-2xl font-bold">{stats.activeInstances}</p>
                   <p className="text-sm text-muted-foreground">Active Bots</p>
                 </div>
               </div>
@@ -121,7 +155,7 @@ export default function DashboardPage() {
                   <Activity className="h-5 w-5 text-blue-500" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{mockStats.uptime}</p>
+                  <p className="text-2xl font-bold">{stats.uptime}</p>
                   <p className="text-sm text-muted-foreground">Uptime</p>
                 </div>
               </div>
@@ -134,7 +168,7 @@ export default function DashboardPage() {
                   <Zap className="h-5 w-5 text-yellow-500" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{mockStats.avgResponseTime}</p>
+                  <p className="text-2xl font-bold">{stats.avgResponseTime}</p>
                   <p className="text-sm text-muted-foreground">Avg Response</p>
                 </div>
               </div>
@@ -145,7 +179,7 @@ export default function DashboardPage() {
         {/* Instances List */}
         <div className="mb-8">
           <h2 className="text-xl font-semibold mb-4">Your Bots</h2>
-          {mockInstances.length === 0 ? (
+          {instances.length === 0 ? (
             <Card>
               <CardContent className="py-12 text-center">
                 <Bot className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
@@ -163,7 +197,7 @@ export default function DashboardPage() {
             </Card>
           ) : (
             <div className="grid gap-4">
-              {mockInstances.map((instance) => (
+              {instances.map((instance) => (
                 <Card key={instance.id}>
                   <CardContent className="py-6">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">

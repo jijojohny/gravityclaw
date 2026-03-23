@@ -15,6 +15,7 @@ build/
 .env
 .env.local
 .env.*.local
+.env.example
 
 # IDE
 .idea/
@@ -41,3 +42,4 @@ contracts/typechain-types/
 
 # Misc
 *.tsbuildinfo
+.IMPLEMENTATION.md

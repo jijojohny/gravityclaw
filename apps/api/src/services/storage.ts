@@ -74,14 +74,31 @@ You are a helpful AI assistant.
 };
 
 export class StorageService {
-  private indexer: Indexer;
-  private provider: ethers.JsonRpcProvider;
-  private signer: ethers.Wallet;
+  private indexer: Indexer | null = null;
+  private provider: ethers.JsonRpcProvider | null = null;
+  private signer: ethers.Wallet | null = null;
+  private initialized = false;
 
   constructor() {
-    this.provider = new ethers.JsonRpcProvider(config.og.chainRpc);
-    this.signer = new ethers.Wallet(config.og.privateKey, this.provider);
-    this.indexer = new Indexer(config.og.indexerRpc);
+    this.initializeIfConfigured();
+  }
+
+  private initializeIfConfigured() {
+    if (this.initialized) return;
+    
+    try {
+      if (config.og.privateKey && config.og.privateKey.length >= 64) {
+        this.provider = new ethers.JsonRpcProvider(config.og.chainRpc);
+        this.signer = new ethers.Wallet(config.og.privateKey, this.provider);
+        this.indexer = new Indexer(config.og.indexerRpc);
+        this.initialized = true;
+        logger.info("0G Storage service initialized");
+      } else {
+        logger.warn("0G Storage not configured - using mock mode");
+      }
+    } catch (error) {
+      logger.warn("Failed to initialize 0G Storage - using mock mode", { error });
+    }
   }
 
   async uploadConfig(

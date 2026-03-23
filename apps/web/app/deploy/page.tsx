@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { usePrivy } from "@privy-io/react-auth";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +21,8 @@ import {
   Zap,
   ExternalLink
 } from "lucide-react";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 const AI_MODELS = [
   {
@@ -89,20 +92,29 @@ interface DeploymentConfig {
 
 export default function DeployPage() {
   const router = useRouter();
-  const { authenticated, login, user } = usePrivy();
+  const { authenticated, login, user, ready, getAccessToken } = usePrivy();
   const [step, setStep] = useState<Step>(1);
   const [isDeploying, setIsDeploying] = useState(false);
   const [deployProgress, setDeployProgress] = useState(0);
   const [deployStatus, setDeployStatus] = useState("");
+  const [deployedBot, setDeployedBot] = useState<{ username: string; url: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [config, setConfig] = useState<DeploymentConfig>({
     model: "gpt-4o",
     telegramToken: "",
     personality: "professional",
   });
 
+  useEffect(() => {
+    if (ready && !authenticated) {
+      router.push("/");
+    }
+  }, [ready, authenticated, router]);
+
   const handleDeploy = async () => {
     setStep(4);
     setIsDeploying(true);
+    setError(null);
     
     const steps = [
       { progress: 20, status: "Validating configuration..." },
@@ -112,14 +124,42 @@ export default function DeployPage() {
       { progress: 100, status: "Your bot is live!" },
     ];
 
-    for (const s of steps) {
-      await new Promise((r) => setTimeout(r, 1500));
-      setDeployProgress(s.progress);
-      setDeployStatus(s.status);
-    }
+    try {
+      // Simulate deployment with progress updates
+      for (let i = 0; i < steps.length - 1; i++) {
+        await new Promise((r) => setTimeout(r, 1200));
+        setDeployProgress(steps[i].progress);
+        setDeployStatus(steps[i].status);
+      }
 
-    setIsDeploying(false);
+      // Call API to deploy (mock for now - will connect to real API)
+      const token = await getAccessToken();
+      
+      // For now, simulate successful deployment
+      await new Promise((r) => setTimeout(r, 1000));
+      
+      setDeployProgress(100);
+      setDeployStatus("Your bot is live!");
+      setDeployedBot({
+        username: "YourBot",
+        url: "https://t.me/YourBot"
+      });
+      
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Deployment failed");
+      setDeployProgress(0);
+    } finally {
+      setIsDeploying(false);
+    }
   };
+
+  if (!ready) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   if (!authenticated) {
     return (
@@ -389,6 +429,22 @@ export default function DeployPage() {
                   {deployProgress}% complete
                 </p>
               </>
+            ) : error ? (
+              <>
+                <div className="w-20 h-20 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-6">
+                  <span className="text-3xl">!</span>
+                </div>
+                <h1 className="text-3xl font-bold mb-4">Deployment Failed</h1>
+                <p className="text-destructive mb-8">{error}</p>
+                <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                  <Button size="lg" onClick={() => { setStep(1); setError(null); }}>
+                    Try Again
+                  </Button>
+                  <Button size="lg" variant="outline" onClick={() => router.push("/")}>
+                    Go Home
+                  </Button>
+                </div>
+              </>
             ) : (
               <>
                 <div className="w-20 h-20 rounded-full bg-green-500/10 flex items-center justify-center mx-auto mb-6">
@@ -404,7 +460,7 @@ export default function DeployPage() {
                     <div className="flex items-center justify-center gap-4">
                       <Bot className="h-8 w-8 text-primary" />
                       <div className="text-left">
-                        <p className="font-semibold">@YourBot</p>
+                        <p className="font-semibold">@{deployedBot?.username || "YourBot"}</p>
                         <p className="text-sm text-muted-foreground">
                           {AI_MODELS.find((m) => m.id === config.model)?.name} •{" "}
                           {PERSONALITIES.find((p) => p.id === config.personality)?.name}
@@ -417,7 +473,7 @@ export default function DeployPage() {
                 <div className="flex flex-col sm:flex-row gap-4 justify-center">
                   <Button size="lg" asChild>
                     <a
-                      href="https://t.me/YourBot"
+                      href={deployedBot?.url || "https://t.me/YourBot"}
                       target="_blank"
                       rel="noopener noreferrer"
                     >
