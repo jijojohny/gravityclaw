@@ -1,0 +1,26 @@
+{
+  "name": "gravityclaw",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Deploy OpenClaw under 1 minute on Zero Gravity Chain",
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "clean": "turbo clean && rm -rf node_modules",
+    "db:generate": "turbo db:generate",
+    "db:push": "turbo db:push",
+    "db:migrate": "turbo db:migrate",
+    "contracts:compile": "turbo compile --filter=contracts",
+    "contracts:test": "turbo test --filter=contracts",
+    "contracts:deploy:testnet": "turbo deploy:testnet --filter=contracts"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.0",
+    "typescript": "^5.6.3"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

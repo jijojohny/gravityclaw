@@ -1,0 +1,143 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String        @id @default(cuid())
+  privyId          String        @unique
+  email            String?       @unique
+  walletAddress    String?       @unique
+  stripeCustomerId String?       @unique
+
+  instances    Instance[]
+  subscription Subscription?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Instance {
+  id        String @id @default(cuid())
+  onChainId String @unique
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name        String
+  model       String
+  personality String
+
+  telegramBotToken    String
+  telegramBotId       String
+  telegramBotUsername String?
+
+  configHash        String?
+  computeProviderId String?
+  endpoint          String?
+
+  status InstanceStatus @default(PENDING)
+
+  messagesCount Int       @default(0)
+  lastActiveAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  usageLogs      UsageLog[]
+  deploymentLogs DeploymentLog[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+enum InstanceStatus {
+  PENDING
+  PROVISIONING
+  CONFIGURING
+  ACTIVE
+  PAUSED
+  FAILED
+  TERMINATED
+}
+
+model Subscription {
+  id String @id @default(cuid())
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  planId String
+  plan   Plan   @relation(fields: [planId], references: [id])
+
+  stripeSubscriptionId String? @unique
+  onChainId            String?
+
+  status SubscriptionStatus @default(ACTIVE)
+
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+
+  messagesUsed Int     @default(0)
+  autoRenew    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  EXPIRED
+}
+
+model Plan {
+  id            String  @id @default(cuid())
+  name          String  @unique
+  stripePriceId String?
+
+  priceMonthly Int
+  maxInstances Int
+  maxMessages  Int
+  features     String[]
+
+  subscriptions Subscription[]
+
+  createdAt DateTime @default(now())
+}
+
+model UsageLog {
+  id String @id @default(cuid())
+
+  instanceId String
+  instance   Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  messageCount Int
+  tokensUsed   Int
+  cost         Float
+
+  date DateTime @default(now())
+
+  @@index([instanceId, date])
+}
+
+model DeploymentLog {
+  id         String @id @default(cuid())
+  instanceId String
+
+  instance Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  step     String
+  status   String
+  message  String?
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([instanceId])
+}
