@@ -1,8 +1,10 @@
 import { Router, Response } from "express";
+import { z } from "zod";
 import { AuthenticatedRequest, authMiddleware } from "../middleware/auth.js";
 import { prisma } from "../services/prisma.js";
 import { orchestratorService } from "../services/orchestrator.js";
 import { logger } from "../services/logger.js";
+import { recordInstanceUsage } from "../services/usage.js";
 
 const router = Router();
 
@@ -79,6 +81,58 @@ router.get(
       return res.status(500).json({
         success: false,
         error: "Failed to fetch instance",
+      });
+    }
+  }
+);
+
+const instanceUsageBody = z.object({
+  messageCount: z.number().int().positive(),
+  tokensUsed: z.number().int().nonnegative().optional(),
+  cost: z.number().nonnegative().optional(),
+});
+
+router.post(
+  "/:id/usage",
+  authMiddleware,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const id = req.params.id as string;
+
+      const instance = await prisma.instance.findFirst({
+        where: { id, userId: req.user!.id },
+        select: { id: true },
+      });
+
+      if (!instance) {
+        return res.status(404).json({
+          success: false,
+          error: "Instance not found",
+        });
+      }
+
+      const parsed = instanceUsageBody.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid body",
+          details: parsed.error.flatten(),
+        });
+      }
+
+      const result = await recordInstanceUsage(id, parsed.data);
+
+      return res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      logger.error("Failed to record instance usage", { error });
+      const message =
+        error instanceof Error ? error.message : "Failed to record usage";
+      return res.status(400).json({
+        success: false,
+        error: message,
       });
     }
   }
@@ -166,8 +220,7 @@ router.post(
         });
       }
 
-      // Resume the instance (includes on-chain state update)
-      await orchestratorService.resumeInstance(id, req.user!.id);
+      await orchestratorService.restartInstance(id, req.user!.id);
 
       return res.json({
         success: true,
@@ -175,9 +228,41 @@ router.post(
       });
     } catch (error) {
       logger.error("Failed to restart instance", { error });
-      return res.status(500).json({
+      const message =
+        error instanceof Error ? error.message : "Failed to restart instance";
+      const code =
+        message.includes("not found") || message.includes("Cannot restart")
+          ? 400
+          : 500;
+      return res.status(code).json({
         success: false,
-        error: "Failed to restart instance",
+        error: message,
+      });
+    }
+  }
+);
+
+router.post(
+  "/:id/stop",
+  authMiddleware,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const id = req.params.id as string;
+
+      await orchestratorService.pauseInstance(id, req.user!.id);
+
+      return res.json({
+        success: true,
+        data: { message: "Instance stopped" },
+      });
+    } catch (error) {
+      logger.error("Failed to stop instance", { error });
+      const message =
+        error instanceof Error ? error.message : "Failed to stop instance";
+      const code = message.includes("not found") ? 404 : message.includes("Cannot pause") ? 400 : 500;
+      return res.status(code).json({
+        success: false,
+        error: message,
       });
     }
   }

@@ -244,6 +244,24 @@ export class OrchestratorService {
     };
   }
 
+  private getWebhookUrl(instance: { id: string; endpoint: string | null }): string {
+    const base =
+      instance.endpoint?.replace(/\/$/, "") ||
+      `https://compute.0g.ai/instances/${instance.id}`;
+    return `${base}/webhook/telegram`;
+  }
+
+  private async refreshTelegramWebhook(instance: {
+    id: string;
+    telegramBotToken: string;
+    endpoint: string | null;
+  }): Promise<void> {
+    const token = Buffer.from(instance.telegramBotToken, "base64").toString();
+    const url = this.getWebhookUrl(instance);
+    await telegramService.deleteWebhook(token);
+    await telegramService.setWebhook(token, url);
+  }
+
   async stopInstance(instanceId: string, userId: string): Promise<void> {
     const instance = await prisma.instance.findFirst({
       where: { id: instanceId, userId },
@@ -286,6 +304,15 @@ export class OrchestratorService {
       throw new Error("Instance not found");
     }
 
+    if (instance.status === "TERMINATED" || instance.status === "FAILED") {
+      throw new Error("Cannot pause terminated or failed instance");
+    }
+
+    if (instance.status === "PAUSED") {
+      logger.info("Instance already paused", { instanceId });
+      return;
+    }
+
     // Pause on-chain if registered
     try {
       const signer = contractProvider.getSigner();
@@ -296,6 +323,9 @@ export class OrchestratorService {
     } catch (chainError) {
       logger.error("On-chain pause failed", { instanceId, error: chainError });
     }
+
+    const token = Buffer.from(instance.telegramBotToken, "base64").toString();
+    await telegramService.deleteWebhook(token);
 
     await prisma.instance.update({
       where: { id: instanceId },
@@ -314,6 +344,10 @@ export class OrchestratorService {
       throw new Error("Instance not found");
     }
 
+    if (instance.status !== "PAUSED") {
+      throw new Error("Instance is not paused; use restart to refresh an active instance");
+    }
+
     // Resume on-chain if registered
     try {
       const signer = contractProvider.getSigner();
@@ -325,12 +359,56 @@ export class OrchestratorService {
       logger.error("On-chain resume failed", { instanceId, error: chainError });
     }
 
+    const token = Buffer.from(instance.telegramBotToken, "base64").toString();
+    await telegramService.setWebhook(token, this.getWebhookUrl(instance));
+
     await prisma.instance.update({
       where: { id: instanceId },
       data: { status: "ACTIVE", lastActiveAt: new Date() },
     });
 
     logger.info("Instance resumed", { instanceId });
+  }
+
+  /**
+   * If paused: full resume (chain + webhook + ACTIVE).
+   * If active: bounce Telegram webhook only (no on-chain tx).
+   */
+  async restartInstance(instanceId: string, userId: string): Promise<void> {
+    const instance = await prisma.instance.findFirst({
+      where: { id: instanceId, userId },
+    });
+
+    if (!instance) {
+      throw new Error("Instance not found");
+    }
+
+    if (instance.status === "TERMINATED" || instance.status === "FAILED") {
+      throw new Error("Cannot restart a terminated or failed instance");
+    }
+
+    if (instance.status === "PAUSED") {
+      await this.resumeInstance(instanceId, userId);
+      return;
+    }
+
+    if (instance.status === "ACTIVE") {
+      await this.refreshTelegramWebhook(instance);
+      await prisma.instance.update({
+        where: { id: instanceId },
+        data: { lastActiveAt: new Date() },
+      });
+      logger.info("Instance webhook restarted", { instanceId });
+      return;
+    }
+
+    // PENDING / PROVISIONING / CONFIGURING — best-effort webhook refresh
+    await this.refreshTelegramWebhook(instance);
+    await prisma.instance.update({
+      where: { id: instanceId },
+      data: { lastActiveAt: new Date() },
+    });
+    logger.info("Instance webhook refreshed during deployment state", { instanceId });
   }
 }
 

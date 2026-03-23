@@ -51,6 +51,9 @@ export const config = {
   telegram: {
     apiUrl: process.env.TELEGRAM_API_URL || "https://api.telegram.org",
   },
+
+  /** Shared secret for POST /api/usage/record (compute gateway → API). Empty in dev allows open ingest. */
+  usageIngestSecret: process.env.USAGE_INGEST_SECRET || "",
 };
 
 export const isProduction = config.nodeEnv === "production";
