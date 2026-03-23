@@ -21,8 +21,11 @@ export const config = {
   og: {
     chainRpc: process.env.OG_CHAIN_RPC || "https://evmrpc-testnet.0g.ai",
     chainId: parseInt(process.env.OG_CHAIN_ID || "16602", 10),
-    indexerRpc: process.env.OG_INDEXER_RPC || "https://indexer-testnet.0g.ai",
     privateKey: process.env.OG_PRIVATE_KEY || "",
+    // Storage network
+    storageIndexerRpc: process.env.OG_STORAGE_INDEXER_RPC || "https://indexer-storage-testnet-turbo.0g.ai",
+    // Compute network - default testnet provider
+    computeProviderAddress: process.env.OG_COMPUTE_PROVIDER || "",
   },
   
   contracts: {
