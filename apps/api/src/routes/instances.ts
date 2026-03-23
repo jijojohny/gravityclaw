@@ -46,9 +46,10 @@ router.get(
   authMiddleware,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
+      const { id } = req.params;
       const instance = await prisma.instance.findFirst({
         where: {
-          id: req.params.id,
+          id: id as string,
           userId: req.user!.id,
         },
         include: {
@@ -88,7 +89,7 @@ router.patch(
   authMiddleware,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { id } = req.params;
+      const id = req.params.id as string;
       const { name, status } = req.body;
 
       const instance = await prisma.instance.findFirst({
@@ -129,7 +130,7 @@ router.delete(
   authMiddleware,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { id } = req.params;
+      const id = req.params.id as string;
 
       await orchestratorService.stopInstance(id, req.user!.id);
 
@@ -152,7 +153,7 @@ router.post(
   authMiddleware,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { id } = req.params;
+      const id = req.params.id as string;
 
       const instance = await prisma.instance.findFirst({
         where: { id, userId: req.user!.id },
@@ -165,11 +166,8 @@ router.post(
         });
       }
 
-      // Restart logic would go here
-      await prisma.instance.update({
-        where: { id },
-        data: { status: "ACTIVE", lastActiveAt: new Date() },
-      });
+      // Resume the instance (includes on-chain state update)
+      await orchestratorService.resumeInstance(id, req.user!.id);
 
       return res.json({
         success: true,
@@ -180,6 +178,52 @@ router.post(
       return res.status(500).json({
         success: false,
         error: "Failed to restart instance",
+      });
+    }
+  }
+);
+
+router.post(
+  "/:id/pause",
+  authMiddleware,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const id = req.params.id as string;
+
+      await orchestratorService.pauseInstance(id, req.user!.id);
+
+      return res.json({
+        success: true,
+        data: { message: "Instance paused" },
+      });
+    } catch (error) {
+      logger.error("Failed to pause instance", { error });
+      return res.status(500).json({
+        success: false,
+        error: "Failed to pause instance",
+      });
+    }
+  }
+);
+
+router.post(
+  "/:id/resume",
+  authMiddleware,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const id = req.params.id as string;
+
+      await orchestratorService.resumeInstance(id, req.user!.id);
+
+      return res.json({
+        success: true,
+        data: { message: "Instance resumed" },
+      });
+    } catch (error) {
+      logger.error("Failed to resume instance", { error });
+      return res.status(500).json({
+        success: false,
+        error: "Failed to resume instance",
       });
     }
   }

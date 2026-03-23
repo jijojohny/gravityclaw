@@ -39,7 +39,7 @@ export class TelegramService {
       body: params ? JSON.stringify(params) : undefined,
     });
 
-    const data: TelegramResponse<T> = await response.json();
+    const data = await response.json() as TelegramResponse<T>;
 
     if (!data.ok) {
       throw new Error(data.description || "Telegram API error");

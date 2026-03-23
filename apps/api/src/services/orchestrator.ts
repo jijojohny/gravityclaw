@@ -5,12 +5,15 @@ import { telegramService } from "./telegram.js";
 import { logger } from "./logger.js";
 import { config } from "../config/index.js";
 import type { DeploymentConfig, InstanceStatus } from "../types/index.js";
+import { instanceRegistryService } from "../contracts/instanceRegistry.js";
+import { contractProvider } from "../contracts/index.js";
 
 interface DeploymentResult {
   instanceId: string;
   onChainId: string;
   telegramBotUsername: string;
   endpoint: string;
+  txHash?: string;
 }
 
 export class OrchestratorService {
@@ -66,12 +69,43 @@ export class OrchestratorService {
         data: { configHash },
       });
 
-      // Step 4: Provision on 0G Compute (simulated for now)
-      logger.info("Provisioning on 0G Compute", { instanceId });
+      // Step 4: Register on-chain
+      logger.info("Registering instance on-chain", { instanceId });
       await this.updateInstanceStatus(instanceId, "CONFIGURING");
       
-      // Simulate compute provisioning delay
-      await new Promise((r) => setTimeout(r, 2000));
+      let onChainTxHash: string | undefined;
+      let onChainInstanceId = instance.onChainId;
+      
+      try {
+        const signer = contractProvider.getSigner();
+        if (signer && config.contracts.instanceRegistry) {
+          const { txHash, instanceId: chainInstanceId } = 
+            await instanceRegistryService.registerInstance(
+              instanceId,
+              configHash,
+              1, // Compute provider ID
+              String(botInfo.id)
+            );
+          onChainTxHash = txHash;
+          onChainInstanceId = chainInstanceId;
+          
+          // Activate the instance on-chain
+          await instanceRegistryService.activateInstance(instanceId);
+          
+          logger.info("Instance registered on-chain", { 
+            instanceId, 
+            txHash,
+            chainInstanceId 
+          });
+        } else {
+          logger.warn("Skipping on-chain registration - no signer or contract configured");
+        }
+      } catch (chainError) {
+        logger.error("On-chain registration failed, continuing with off-chain only", {
+          instanceId,
+          error: chainError,
+        });
+      }
       
       const endpoint = `https://compute.0g.ai/instances/${instanceId}`;
       
@@ -79,6 +113,7 @@ export class OrchestratorService {
         where: { id: instanceId },
         data: {
           endpoint,
+          onChainId: onChainInstanceId,
           computeProviderId: "0g-compute-provider-1",
         },
       });
@@ -119,9 +154,10 @@ export class OrchestratorService {
 
       return {
         instanceId,
-        onChainId: instance.onChainId,
+        onChainId: onChainInstanceId,
         telegramBotUsername: botInfo.username,
         endpoint,
+        txHash: onChainTxHash,
       };
     } catch (error) {
       logger.error("Deployment failed", { instanceId, error });
@@ -221,6 +257,17 @@ export class OrchestratorService {
     const token = Buffer.from(instance.telegramBotToken, "base64").toString();
     await telegramService.deleteWebhook(token);
 
+    // Terminate on-chain if registered
+    try {
+      const signer = contractProvider.getSigner();
+      if (signer && config.contracts.instanceRegistry) {
+        await instanceRegistryService.terminateInstance(instanceId);
+        logger.info("Instance terminated on-chain", { instanceId });
+      }
+    } catch (chainError) {
+      logger.error("On-chain termination failed", { instanceId, error: chainError });
+    }
+
     // Update status
     await prisma.instance.update({
       where: { id: instanceId },
@@ -228,6 +275,62 @@ export class OrchestratorService {
     });
 
     logger.info("Instance stopped", { instanceId });
+  }
+
+  async pauseInstance(instanceId: string, userId: string): Promise<void> {
+    const instance = await prisma.instance.findFirst({
+      where: { id: instanceId, userId },
+    });
+
+    if (!instance) {
+      throw new Error("Instance not found");
+    }
+
+    // Pause on-chain if registered
+    try {
+      const signer = contractProvider.getSigner();
+      if (signer && config.contracts.instanceRegistry) {
+        await instanceRegistryService.pauseInstance(instanceId);
+        logger.info("Instance paused on-chain", { instanceId });
+      }
+    } catch (chainError) {
+      logger.error("On-chain pause failed", { instanceId, error: chainError });
+    }
+
+    await prisma.instance.update({
+      where: { id: instanceId },
+      data: { status: "PAUSED" },
+    });
+
+    logger.info("Instance paused", { instanceId });
+  }
+
+  async resumeInstance(instanceId: string, userId: string): Promise<void> {
+    const instance = await prisma.instance.findFirst({
+      where: { id: instanceId, userId },
+    });
+
+    if (!instance) {
+      throw new Error("Instance not found");
+    }
+
+    // Resume on-chain if registered
+    try {
+      const signer = contractProvider.getSigner();
+      if (signer && config.contracts.instanceRegistry) {
+        await instanceRegistryService.resumeInstance(instanceId);
+        logger.info("Instance resumed on-chain", { instanceId });
+      }
+    } catch (chainError) {
+      logger.error("On-chain resume failed", { instanceId, error: chainError });
+    }
+
+    await prisma.instance.update({
+      where: { id: instanceId },
+      data: { status: "ACTIVE", lastActiveAt: new Date() },
+    });
+
+    logger.info("Instance resumed", { instanceId });
   }
 }
 

@@ -49,7 +49,7 @@ router.get(
   authMiddleware,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { instanceId } = req.params;
+      const instanceId = req.params.instanceId as string;
       const status = await orchestratorService.getDeploymentStatus(instanceId);
 
       return res.json({
